@@ -1,0 +1,14 @@
+[Unit]
+Description=OH2P music and speech MCP
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/xiaomi-oh2p-mcp-tutorial
+ExecStart=%h/xiaomi-oh2p-mcp-tutorial/.venv/bin/python src/server.py
+Restart=on-failure
+RestartSec=15
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

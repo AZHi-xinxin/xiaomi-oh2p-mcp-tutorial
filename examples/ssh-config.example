@@ -1,0 +1,11 @@
+# Merge this host block into ~/.ssh/config. Use your own address/key/known_hosts.
+Host oh2p
+    HostName SPEAKER_LAN_IP
+    User root
+    IdentityFile ~/.ssh/oh2p-management-rsa
+    IdentitiesOnly yes
+    StrictHostKeyChecking yes
+    UserKnownHostsFile ~/.ssh/oh2p-known_hosts
+    HostKeyAlgorithms +ssh-rsa
+    PubkeyAcceptedAlgorithms +ssh-rsa
+    ConnectTimeout 5
