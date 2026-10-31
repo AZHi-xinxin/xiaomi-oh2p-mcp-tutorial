@@ -72,6 +72,23 @@ recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
 
 ## 后台运行和验收
 
-开发者将上述监听器实现后，可用单独的 systemd 用户单元运行，Restart=on-failure、RestartSec=15，配置 UMask=0077。别把 MCP 单元误当监听器单元；本仓库现成单元仅启动 MCP。
+开发者将上述监听器实现后，可用单独的 systemd 用户单元运行，配置 `UMask=0077`。监听器启动成功后应持续运行；遇到无法恢复的收音/SSH 错误，释放子进程并以非零状态退出，由 systemd 每 30 秒重启。新进程重新建立收音状态，不重放旧录音、未确认的家电动作或聊天事件。
+
+2026-10-31 的现场发现：监听器连续失败后触发了 systemd 的启动次数限制，进入 `failed`，后续即使音箱 SSH 恢复可达也不会自行重试；原厂语音服务仍然能回应。原始失败触发原因没有完整日志证据，因此不能一概归因为断网。恢复服务并调整重试配置后，维护者已实际确认自定义唤醒恢复。
+
+已经有 `oh2p-voice-listener.service` 的部署，可安装本仓库的重连配置：
+
+```bash
+mkdir -p ~/.config/systemd/user/oh2p-voice-listener.service.d
+install -m 600 examples/voice-listener-reconnect.conf ~/.config/systemd/user/oh2p-voice-listener.service.d/30-reconnect.conf
+systemctl --user daemon-reload
+systemctl --user reset-failed oh2p-voice-listener.service
+systemctl --user start oh2p-voice-listener.service
+systemctl --user show oh2p-voice-listener.service -p ActiveState -p SubState -p MainPID -p NRestarts -p RestartUSec -p StartLimitIntervalUSec
+```
+
+若你的监听器用了别的单元名，同步替换目录和命令中的名称。这份 drop-in 设置 `StartLimitIntervalSec=0`、`Restart=on-failure` 和 `RestartSec=30`，取消启动次数限制并留出重连间隔。手动 `systemctl --user stop` 后仍会保持停止；应用正常退出也不会因 `on-failure` 自动重启。持续配置错误会每 30 秒再次失败，应先停止服务、查看日志并修正，再启动。
+
+查看本轮进程的 `active/running`、监听器状态和时间戳后，再实际喊自己的唤醒词验收。`active` 只说明进程存活，不能代替听到回复。本仓库现成完整单元 `oh2p-mcp.service` 仅启动 MCP；上面的 drop-in 用于你自行实现并已安装的监听器，不会凭空安装唤醒服务。
 
 依次验收静室唤醒、完整短句、音乐高潮时唤醒、无语音时不投递、断网/断线退出、重连无旧音频重放、家电否定句不操作、Orbis 回原会话和真实发声。长期误唤醒测试还需持续积累，不能用一轮成功代替。

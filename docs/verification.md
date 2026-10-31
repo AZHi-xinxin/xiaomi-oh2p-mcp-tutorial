@@ -9,3 +9,11 @@
 复测：安装 requirements.txt 和系统 libspeexdsp1，仓库根目录运行 `PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v`。
 
 本次 Python 3.12、MCP Python SDK 1.29.0、NumPy 2.2.6、系统 libspeexdsp.so.1。音箱示例来自既有实测模块，改为通用 SSH 别名和私有配置；不包含任何用户音色、账号、公私钥、音频或聊天绑定。
+
+## 2026-10-31 监听恢复验收
+
+现有常开主机的监听器曾因 systemd 启动次数限制停在 failed。增加 `StartLimitIntervalSec=0`、`Restart=on-failure`、`RestartSec=30` 后恢复运行，观察约 80 秒同一进程、重启次数为 0，状态更新为 listening。随后维护者实际确认自定义唤醒已恢复。监听器业务源码、固件与私人规则未改；原始异常触发原因未查证。
+
+公开增加同样三项配置的通用 drop-in 和诊断步骤。它依赖已有监听器单元；不包含私人监听程序。长时间断网、反复断电与另一套设备从零复装不在此次已验范围。
+
+发布前重跑原有 12 项测试全部通过，使用临时单元执行 `systemd-analyze --user verify` 核验重连配置通过；没有启动测试监听器或操作实体音箱。配置语义参考 [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#StartLimitIntervalSec=interval) 和 [systemd.service](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html#Restart=)。
