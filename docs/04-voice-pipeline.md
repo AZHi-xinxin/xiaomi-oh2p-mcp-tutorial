@@ -64,9 +64,43 @@ recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
 
 ## 接回 Orbis 的同一个 AI
 
-需要人类在支持事件/哨兵入口的 Orbis 版本中建立并启用来源绑定，把识别文字送往指定助手和会话，而不是新建一个没有历史的“替身”。客户端具体授权界面随版本变化，以该版本内置帮助为准，参见 [Orbis 项目](https://github.com/AZHi-xinxin/Orbis)。
+先把两件事分开：**识别出的文字送往哪里**，以及**谁负责执行设备动作**。换成自己的 TTS 音色，只改变播报声音，不会自动继承原厂小爱的所有控制能力。
 
-实际事件适配器先读取 `/api/orbis/events/status?source=…`，确认来源有效且绑定助手/会话一致，再 POST `/api/orbis/events`。事件含独立 `event_id`、`source`、识别文字、`wake` 和毫秒时间。超时按原 ID 查询 `/api/orbis/events/receipt`，结果不明不换 ID 重发。密钥只在主机私有文件。
+### 聊天控制与快捷控制
+
+| 路线 | 实际经过的环节 | 需要补齐什么 |
+| --- | --- | --- |
+| 由原 AI 聊天控制 | 唤醒 → 收音/ASR → 原助手原窗口 → AI 调用家电 MCP → 核验设备结果 → TTS 播报 | 该窗口已配置并允许相应家电工具；语音桥真正触发回复；播报出口已接通 |
+| 直接快捷控制 | 唤醒 → 短句 ASR/有限意图解析 → 本地白名单动作 → HA/设备 → 核验结果 → TTS/缓存音频 | 自己实现快捷路由、设备映射、授权、歧义处理和执行回执；不需要每次进入 Orbis 聊天 |
+
+前一条已经可以实现“对音箱说话，由自己的 AI 开关灯”。后一条省去完整聊天往返，但需要额外的监听器业务实现。本仓库的 `speaker_say` 只播报，`speaker_music` 只控制原厂音乐；它们本身没有灯控功能。灯控接入见[米家 HomeMCP 教程](https://github.com/AZHi-xinxin/xiaomi-ha-mcp-tutorial)。私人部署验证过快捷路线，不代表完整快捷服务已经随本仓库发布。
+
+### 普通聊天桥与原生事件入口
+
+两种入口都应固定到用户选定的同一助手、同一会话；不要每次新建窗口。普通 Web 聊天桥送的是用户消息，原生事件入口送的是带事件元数据的外部消息。普通消息不会仅因来自音箱就自动变成时间折叠事件卡。
+
+**截至 2026-11-02，核对的公开版本是 Orbis v2.6.15，源码提交 `6817b2291c53d1ba5f7b9abdd4ab64bd49ac93fd`：**
+
+- 原生 `/api/orbis/events` 接收、固定目标会话和事件时间折叠显示都在公开版，不是 DEV 独占。
+- HTTP `source` 目前只有 `rikka_sentinel`、`lc_sentinel`、`self_reminder`、`legacy_sentinel` 四个固定值；不能随意填 `speaker_wake`，也不能在请求里自行指定任意助手和会话。
+- 外部来源绑定在当前设置页面是**只读**，尚未提供完整的新增/编辑向导。源码中有旧编辑组件，不等于发布界面已经挂载了它。
+- 事件入口用独立的 Bearer 设备凭证，与普通 Web 聊天登录密码/JWT 分开；当前没有完整的专用凭证创建、导出、轮换管理界面。
+
+因此，**第一次接入的用户，现在不能仅按“在 App 里新建来源并复制令牌”完成原生接入**。旧版教程这里写得不够准确，现予以更正。已有 Web 聊天桥且文字能进入原窗口，可以先保留它，按下一篇排查工具控制；需要时间折叠卡时，须等通用配置入口补齐，或由熟悉该版本的维护者完成明确授权、固定目标的适配。不要复制他人的绑定/令牌，也不要为了接入去开放无认证公网端口。
+
+公开源码依据：[事件 HTTP 路由](https://github.com/AZHi-xinxin/Orbis/blob/6817b2291c53d1ba5f7b9abdd4ab64bd49ac93fd/app/src/main/java/me/rerere/rikkahub/web/routes/OrbisEventRoutes.kt)、[来源与绑定规则](https://github.com/AZHi-xinxin/Orbis/blob/6817b2291c53d1ba5f7b9abdd4ab64bd49ac93fd/app/src/main/java/me/rerere/rikkahub/data/orbis/OrbisEventInbox.kt)、[当前哨兵界面](https://github.com/AZHi-xinxin/Orbis/blob/6817b2291c53d1ba5f7b9abdd4ab64bd49ac93fd/app/src/main/java/me/rerere/rikkahub/ui/pages/orbis/OrbisSentinelPanel.kt)。后续版本是否增加配置入口，应以其实际界面和对应源码为准。
+
+### 已配置好原生绑定的开发者：如何验证投递
+
+下面是适配器契约，**不是从零配置指引**。前提是目标手机已有有效的专用凭证和人类授权的来源绑定，且常开主机能访问手机 Web 服务。
+
+1. 带专用 Bearer 凭证 GET `/api/orbis/events/status?source=实际已绑定的来源`，检查 `bound=true`、`valid=true`，并核对返回的 `assistant_id`、`conversation_id`。此查询不会发聊天或调用模型。
+2. 每一段新识别结果先持久保存一个独立 `event_id`，再 POST `/api/orbis/events`。只投递有真实人类新话的结果，不能循环投递空音频或提示音。
+3. 请求内容包含 `event_id`、`source`、`text`、`wake` 和可选 `occurred_at`（Unix 毫秒）；`wake=true` 请求唤起回复，但仍受 App 暂停/授权等规则影响。不要把秒当毫秒，也不要拿服务器时区字符串代替数字。
+4. 首次接受通常返回 202，同一事件的已存在回执可能返回 200/`duplicate=true`。超时后按原来源和原 ID GET `/api/orbis/events/receipt?source=…&event_id=…`；结果未知时不换 ID 再发一遍，也不把一次 404 当成旧请求必定没有到达。
+5. 401 先检查是否错用了普通 Web 密码/JWT；400 `invalid_event_source` 检查来源；409 `event_source_not_bound`、`event_target_invalid` 等先修绑定和目标，不循环重试。状态码本身不代表设备执行结果。
+
+保存凭证的文件仅限运行服务的账户读取，日志隐藏认证头和私人识别正文。普通 Web 聊天桥沿用自己的认证方式，不能把两个入口的凭证混用。
 
 收到 Orbis 事件回执只证明接收；AI 回复成功只证明文本生成。还需实际 `speaker_say` 调用和人类听见，才是语音往返通过。此仓库不附任何用户现有绑定材料。
 

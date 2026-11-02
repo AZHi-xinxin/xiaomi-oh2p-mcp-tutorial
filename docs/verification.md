@@ -17,3 +17,9 @@
 公开增加同样三项配置的通用 drop-in 和诊断步骤。它依赖已有监听器单元；不包含私人监听程序。长时间断网、反复断电与另一套设备从零复装不在此次已验范围。
 
 发布前重跑原有 12 项测试全部通过，使用临时单元执行 `systemd-analyze --user verify` 核验重连配置通过；没有启动测试监听器或操作实体音箱。配置语义参考 [systemd.unit](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#StartLimitIntervalSec=interval) 和 [systemd.service](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html#Restart=)。
+
+## 2026-11-02 接入说明校正
+
+核对公开 Orbis v2.6.15（提交 `6817b2291c53d1ba5f7b9abdd4ab64bd49ac93fd`）的事件路由、来源白名单、绑定存储和可见哨兵界面：原生事件与时间折叠卡已公开，但外部来源绑定在界面上只读，专用事件凭证尚无完整管理入口。第四篇原来“在 App 建立并启用来源绑定”的说法不足以指导新用户操作，现明确配置前提与缺口。
+
+此次新增同窗键盘灯控优先的排查顺序，区分普通聊天桥、原生事件入口、快捷设备控制与 TTS 播报。检查范围为公开源码和文档；没有安装新语音服务、重新刷机、播放音频或开关真实灯具。已有家庭部署成功不等于公开仓库提供完整通用快捷监听器，也不等于本轮复测了所有设备动作。
